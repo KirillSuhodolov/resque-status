@@ -338,11 +338,11 @@ class TestResquePluginsStatus < Minitest::Test
 
       end
 
-      describe "#safe_perform!" do
+      describe "#safe_perform" do
         before do
           @job = ErrorJob.new("123")
           assert_raises(RuntimeError) do
-            @job.safe_perform!
+            @job.safe_perform
           end
         end
 
