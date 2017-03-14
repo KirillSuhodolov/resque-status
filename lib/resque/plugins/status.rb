@@ -78,7 +78,7 @@ module Resque
       # re-raise the error.
       def safe_perform(job, block)
         working
-        perform.call(options)
+        perform.call(**options)
         if status && status.failed?
           on_failure(status.message) if respond_to?(:on_failure)
           return
