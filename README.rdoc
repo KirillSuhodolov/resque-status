@@ -1,3 +1,5 @@
+Fork of abandoned gem. Adapted to work with Active Job and Rails 4.2 and 5
+
 = resque-status
 
 resque-status is an extension to the resque queue system that provides simple trackable jobs.
@@ -17,12 +19,8 @@ using homebrew (brew install redis).
 
 Install the resque-status gem (which will pull in the dependencies).
 
-  gem install resque-status
-
-With newer Rails add this to your Gemfile:
-
   # Gemfile
-  gem 'resque-status'
+  gem 'resque-status', github: 'KirillSuhodolov/resque-status', branch: 'master'
 
 Then in an initializer:
 
@@ -35,8 +33,16 @@ Then in an initializer:
 The most direct way to use resque-status is to create your jobs using the
 Resque::Plugins::Status module. An example job would look something like:
 
-  class SleepJob
+  class SleepJob < ActiveJob::Base
     include Resque::Plugins::Status
+
+    before_enqueue do |job|
+      create_status_hash
+    end
+
+    around_perform do |job, block|
+      safe_perform(job, block)
+    end
 
     def perform
       total = (options['length'] || 1000).to_i

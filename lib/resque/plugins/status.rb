@@ -1,6 +1,5 @@
 module Resque
   module Plugins
-
     # Resque::Plugins::Status is a module your jobs will include.
     # It provides helper methods for updating the status/etc from within an
     # instance as well as class methods for creating and queuing the jobs.
@@ -56,67 +55,6 @@ module Resque
       end
 
       module ClassMethods
-
-        # The default queue is :statused, this can be ovveridden in the specific job
-        # class to put the jobs on a specific worker queue
-        def queue
-          :statused
-        end
-
-        # used when displaying the Job in the resque-web UI and identifiyng the job
-        # type by status. By default this is the name of the job class, but can be
-        # ovveridden in the specific job class to present a more user friendly job
-        # name
-        def name
-          self.to_s
-        end
-
-        # Create is the primary method for adding jobs to the queue. This would be
-        # called on the job class to create a job of that type. Any options passed are
-        # passed to the Job instance as a hash of options. It returns the UUID of the
-        # job.
-        #
-        # == Example:
-        #
-        #       class ExampleJob
-        #         include Resque::Plugins::Status
-        #
-        #         def perform
-        #           set_status "Hey I'm a job num #{options['num']}"
-        #         end
-        #
-        #       end
-        #
-        #       job_id = ExampleJob.create(:num => 100)
-        #
-        def create(options = {})
-          self.enqueue(self, options)
-        end
-
-        # Adds a job of type <tt>klass<tt> to the queue with <tt>options<tt>.
-        #
-        # Returns the UUID of the job if the job was queued, or nil if the job was
-        # rejected by a before_enqueue hook.
-        def enqueue(klass, options = {})
-          self.enqueue_to(Resque.queue_from_class(klass) || queue, klass, options)
-        end
-
-        # Adds a job of type <tt>klass<tt> to a specified queue with <tt>options<tt>.
-        #
-        # Returns the UUID of the job if the job was queued, or nil if the job was
-        # rejected by a before_enqueue hook.
-        def enqueue_to(queue, klass, options = {})
-          uuid = Resque::Plugins::Status::Hash.generate_uuid
-          Resque::Plugins::Status::Hash.create uuid, :options => options
-
-          if Resque.enqueue_to(queue, klass, uuid, options)
-            uuid
-          else
-            Resque::Plugins::Status::Hash.remove(uuid)
-            nil
-          end
-        end
-
         # Removes a job of type <tt>klass<tt> from the queue.
         #
         # The initially given options are retrieved from the status hash.
@@ -124,18 +62,6 @@ module Resque
         def dequeue(klass, uuid)
           status = Resque::Plugins::Status::Hash.get(uuid)
           Resque.dequeue(klass, uuid, status.options)
-        end
-
-        # This is the method called by Resque::Worker when processing jobs. It
-        # creates a new instance of the job class and populates it with the uuid and
-        # options.
-        #
-        # You should not override this method, rahter the <tt>perform</tt> instance method.
-        def perform(uuid=nil, options = {})
-          uuid ||= Resque::Plugins::Status::Hash.generate_uuid
-          instance = new(uuid, options)
-          instance.safe_perform!
-          instance
         end
 
         # Wrapper API to forward a Resque::Job creation API call into a Resque::Plugins::Status call.
@@ -146,19 +72,13 @@ module Resque
         end
       end
 
-      # Create a new instance with <tt>uuid</tt> and <tt>options</tt>
-      def initialize(uuid, options = {})
-        @uuid    = uuid
-        @options = options
-      end
-
       # Run by the Resque::Worker when processing this job. It wraps the <tt>perform</tt>
       # method ensuring that the final status of the job is set regardless of error.
       # If an error occurs within the job's work, it will set the status as failed and
       # re-raise the error.
-      def safe_perform!
-        set_status({'status' => STATUS_WORKING})
-        perform
+      def safe_perform!(job, block)
+        working
+        perform.call
         if status && status.failed?
           on_failure(status.message) if respond_to?(:on_failure)
           return
@@ -176,6 +96,18 @@ module Resque
         else
           raise e
         end
+      end
+
+      def name
+        self.to_s
+      end
+
+      def uuid
+        self.job_id
+      end
+
+      def options
+        arguments.first
       end
 
       # Set the jobs status. Can take an array of strings or hashes that are merged
@@ -213,6 +145,14 @@ module Resque
         }, *messages)
       end
 
+      def create_status_hash
+        Resque::Plugins::Status::Hash.create(uuid, options)
+      end
+
+      def working
+        set_status({'status' => STATUS_WORKING, attempts: (options.try(:attempts) || 0) + 1})
+      end
+
       # sets the status of the job for the current itteration. You should use
       # the <tt>at</tt> method if you have actual numbers to track the iteration count.
       # This will kill the job if it has been added to the kill list with
@@ -245,10 +185,10 @@ module Resque
       end
 
       private
+
       def set_status(*args)
         self.status = [status, {'name'  => self.name}, args].flatten
       end
-
     end
   end
 end
