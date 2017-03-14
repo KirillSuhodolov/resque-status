@@ -76,8 +76,7 @@ module Resque
       # method ensuring that the final status of the job is set regardless of error.
       # If an error occurs within the job's work, it will set the status as failed and
       # re-raise the error.
-      def safe_perform
-        puts 'safe_perform'
+      def safe_perform!
         working
         yield
         if status && status.failed?
