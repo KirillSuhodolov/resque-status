@@ -36,13 +36,8 @@ Resque::Plugins::Status module. An example job would look something like:
   class SleepJob < ActiveJob::Base
     include Resque::Plugins::Status
 
-    before_enqueue do |job|
-      create_status_hash
-    end
-
-    around_perform do |job, block|
-      safe_perform(job, block)
-    end
+    before_enqueue :create_status_hash
+    around_perform :safe_perform!
 
     def perform
       total = (options['length'] || 1000).to_i
